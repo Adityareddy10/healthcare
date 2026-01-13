@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Healthcare Management - Select Role</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="role-selector-container">
+        <div class="role-selector-box">
+            <h1>Healthcare Management System</h1>
+            <p class="subtitle">Select Your Login Type</p>
+            
+            <div class="role-cards">
+                <!-- Admin Card -->
+                <div class="role-card admin-card">
+                    <div class="role-icon">👨‍💼</div>
+                    <h2>Administrator</h2>
+                    <p>System administrator with full access</p>
+                    <button class="btn btn-primary" onclick="window.location.href='login-admin.html'">
+                        Login as Admin
+                    </button>
+                </div>
+
+                <!-- Doctor Card -->
+                <div class="role-card doctor-card">
+                    <div class="role-icon">👨‍⚕️</div>
+                    <h2>Doctor</h2>
+                    <p>Manage patients and appointments</p>
+                    <button class="btn btn-primary" onclick="window.location.href='login-doctor.html'">
+                        Login as Doctor
+                    </button>
+                </div>
+
+                <!-- Patient Card -->
+                <div class="role-card patient-card">
+                    <div class="role-icon">👤</div>
+                    <h2>Patient</h2>
+                    <p>View your medical records</p>
+                    <button class="btn btn-primary" onclick="window.location.href='login-patient.html'">
+                        Login as Patient
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
