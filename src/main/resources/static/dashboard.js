@@ -197,18 +197,31 @@ async function loadMedicalRecords() {
 }
 
 function openRecordModal() {
-    // TODO: Implement record modal
-    alert('Create Medical Record\n(Feature to be implemented)');
+    document.getElementById('recordModal').style.display = 'block';
 }
 
-function viewRecord(recordId) {
-    alert('View details for record ' + recordId + '\n(Feature to be implemented)');
+function closeRecordModal() {
+    document.getElementById('recordModal').style.display = 'none';
+    document.getElementById('recordForm').reset();
 }
 
 async function deleteRecord(recordId) {
     if (confirm('Are you sure you want to delete this record?')) {
-        // TODO: Implement delete
-        alert('Delete record ' + recordId + '\n(Feature to be implemented)');
+        try {
+            const response = await fetch(`${API_BASE_URL}/medical-records/${recordId}`, {
+                method: 'DELETE',
+                headers: getAuthHeader()
+            });
+            if (response.ok) {
+                alert('Record deleted successfully');
+                loadMedicalRecords();
+            } else {
+                alert('Failed to delete record');
+            }
+        } catch (error) {
+            console.error('Error deleting record:', error);
+            alert('Error deleting record');
+        }
     }
 }
 
@@ -244,7 +257,13 @@ async function loadUsers() {
 }
 
 function openUserModal() {
-    alert('Create New User\n(Feature to be implemented)');
+    document.getElementById('userModal').style.display = 'block';
+    document.getElementById('userForm').reset();
+}
+
+function closeUserModal() {
+    document.getElementById('userModal').style.display = 'none';
+    document.getElementById('userForm').reset();
 }
 
 function editUser(userId) {
@@ -253,7 +272,21 @@ function editUser(userId) {
 
 async function deleteUser(userId) {
     if (confirm('Are you sure you want to delete this user?')) {
-        alert('Delete user ' + userId + '\n(Feature to be implemented)');
+        try {
+            const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+                method: 'DELETE',
+                headers: getAuthHeader()
+            });
+            if (response.ok) {
+                alert('User deleted successfully');
+                loadUsers();
+            } else {
+                alert('Failed to delete user');
+            }
+        } catch (error) {
+            console.error('Error deleting user:', error);
+            alert('Error deleting user');
+        }
     }
 }
 
@@ -283,3 +316,148 @@ async function loadAuditLogs() {
         console.error('Error loading audit logs:', error);
     }
 }
+
+// ==================== FORM HANDLERS ====================
+
+// Handle role change for doctor-specific fields
+document.addEventListener('DOMContentLoaded', function() {
+    const userRoleSelect = document.getElementById('userRole');
+    if (userRoleSelect) {
+        userRoleSelect.addEventListener('change', function() {
+            const doctorFields = document.getElementById('doctorFields');
+            if (this.value === 'DOCTOR') {
+                doctorFields.style.display = 'block';
+                document.getElementById('licenseNumber').required = true;
+                document.getElementById('specialization').required = true;
+            } else {
+                doctorFields.style.display = 'none';
+                document.getElementById('licenseNumber').required = false;
+                document.getElementById('specialization').required = false;
+            }
+        });
+    }
+
+    // User form submission
+    const userForm = document.getElementById('userForm');
+    if (userForm) {
+        userForm.addEventListener('submit', handleCreateUser);
+    }
+
+    // Record form submission
+    const recordForm = document.getElementById('recordForm');
+    if (recordForm) {
+        recordForm.addEventListener('submit', handleCreateRecord);
+    }
+});
+
+async function handleCreateUser(e) {
+    e.preventDefault();
+    
+    const role = document.getElementById('userRole').value;
+    const firstName = document.getElementById('firstName').value;
+    const lastName = document.getElementById('lastName').value;
+    const username = document.getElementById('newUsername').value;
+    const email = document.getElementById('newEmail').value;
+    const password = document.getElementById('newPassword').value;
+    const phoneNumber = document.getElementById('newPhoneNumber').value;
+
+    try {
+        let endpoint = '';
+        let payload = {
+            username: username,
+            password: password,
+            email: email,
+            firstName: firstName,
+            lastName: lastName,
+            phoneNumber: phoneNumber
+        };
+
+        if (role === 'DOCTOR') {
+            endpoint = `${API_BASE_URL}/auth/register/doctor`;
+            payload.licenseNumber = document.getElementById('licenseNumber').value;
+            payload.specialization = document.getElementById('specialization').value;
+        } else if (role === 'PATIENT') {
+            endpoint = `${API_BASE_URL}/auth/register/patient`;
+        }
+
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert('User created successfully!');
+            closeUserModal();
+            loadUsers();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to create user'));
+        }
+    } catch (error) {
+        console.error('Error creating user:', error);
+        alert('Error creating user: ' + error.message);
+    }
+}
+
+async function handleCreateRecord(e) {
+    e.preventDefault();
+
+    const patientId = document.getElementById('recordPatientId').value;
+    const doctorId = document.getElementById('recordDoctorId').value;
+    const recordType = document.getElementById('recordType').value;
+    const diagnosis = document.getElementById('diagnosis').value;
+    const treatment = document.getElementById('treatment').value;
+    const medications = document.getElementById('medications').value;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/medical-records/create`, {
+            method: 'POST',
+            headers: {
+                ...getAuthHeader(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                patientId: parseInt(patientId),
+                doctorId: parseInt(doctorId),
+                recordType: recordType,
+                diagnosis: diagnosis,
+                treatment: treatment,
+                medications: medications
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert('Medical record created successfully!');
+            closeRecordModal();
+            loadMedicalRecords();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to create record'));
+        }
+    } catch (error) {
+        console.error('Error creating record:', error);
+        alert('Error creating record: ' + error.message);
+    }
+}
+
+// Close modals when clicking outside
+window.addEventListener('click', function(event) {
+    const userModal = document.getElementById('userModal');
+    const recordModal = document.getElementById('recordModal');
+    const appointmentModal = document.getElementById('appointmentModal');
+
+    if (event.target == userModal) {
+        userModal.style.display = 'none';
+    }
+    if (event.target == recordModal) {
+        recordModal.style.display = 'none';
+    }
+    if (event.target == appointmentModal) {
+        appointmentModal.style.display = 'none';
+    }
+});
