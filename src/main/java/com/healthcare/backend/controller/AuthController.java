@@ -9,9 +9,13 @@ import com.healthcare.backend.repository.DoctorRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -26,6 +30,9 @@ public class AuthController {
 
     @Autowired
     private DoctorRepository doctorRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     /**
      * Register a new patient user
@@ -66,8 +73,8 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email already registered"));
             }
 
-            // Create user
-            User user = new User(username, password, email, "PATIENT");
+            // Create user with encoded password
+            User user = new User(username, passwordEncoder.encode(password), email, "PATIENT");
             user.setActive(true);
             User savedUser = userRepository.save(user);
 
@@ -143,8 +150,8 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(Map.of("error", "License number already registered"));
             }
 
-            // Create user
-            User user = new User(username, password, email, "DOCTOR");
+            // Create user with encoded password
+            User user = new User(username, passwordEncoder.encode(password), email, "DOCTOR");
             user.setActive(true);
             User savedUser = userRepository.save(user);
 
@@ -202,8 +209,8 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email already registered"));
             }
 
-            // Create admin user
-            User admin = new User(username, password, email, "ADMIN");
+            // Create admin user with encoded password
+            User admin = new User(username, passwordEncoder.encode(password), email, "ADMIN");
             admin.setActive(true);
             User savedAdmin = userRepository.save(admin);
 
@@ -240,6 +247,241 @@ public class AuthController {
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Error checking username: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Update own password for authenticated user
+     * POST /api/auth/update-password
+     * Requires: Authentication header
+     */
+    @PostMapping("/update-password")
+    public ResponseEntity<?> updatePassword(@RequestBody Map<String, String> request) {
+        try {
+            // Get currently authenticated user
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication == null || !authentication.isAuthenticated()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Not authenticated"));
+            }
+
+            String currentUsername = authentication.getName();
+            Optional<User> userOptional = userRepository.findByUsername(currentUsername);
+            
+            if (!userOptional.isPresent()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found"));
+            }
+
+            String oldPassword = request.get("oldPassword");
+            String newPassword = request.get("newPassword");
+            String confirmPassword = request.get("confirmPassword");
+
+            // Validate inputs
+            if (oldPassword == null || oldPassword.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Old password is required"));
+            }
+            if (newPassword == null || newPassword.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "New password is required"));
+            }
+            if (confirmPassword == null || confirmPassword.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Password confirmation is required"));
+            }
+            if (!newPassword.equals(confirmPassword)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "New passwords do not match"));
+            }
+            if (newPassword.length() < 6) {
+                return ResponseEntity.badRequest().body(Map.of("error", "New password must be at least 6 characters long"));
+            }
+
+            User user = userOptional.get();
+
+            // Verify old password
+            if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Old password is incorrect"));
+            }
+
+            // Update password
+            user.setPassword(passwordEncoder.encode(newPassword));
+            User updatedUser = userRepository.save(user);
+
+            return ResponseEntity.ok(Map.of(
+                "message", "Password updated successfully",
+                "userId", updatedUser.getId(),
+                "username", updatedUser.getUsername()
+            ));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to update password: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Update own username for authenticated user
+     * POST /api/auth/update-username
+     * Requires: Authentication header
+     */
+    @PostMapping("/update-username")
+    public ResponseEntity<?> updateUsername(@RequestBody Map<String, String> request) {
+        try {
+            // Get currently authenticated user
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication == null || !authentication.isAuthenticated()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Not authenticated"));
+            }
+
+            String currentUsername = authentication.getName();
+            Optional<User> userOptional = userRepository.findByUsername(currentUsername);
+            
+            if (!userOptional.isPresent()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found"));
+            }
+
+            String newUsername = request.get("newUsername");
+            String password = request.get("password");
+
+            // Validate inputs
+            if (newUsername == null || newUsername.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "New username is required"));
+            }
+            if (password == null || password.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Password is required to change username"));
+            }
+
+            User user = userOptional.get();
+
+            // Verify password
+            if (!passwordEncoder.matches(password, user.getPassword())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid password"));
+            }
+
+            // Check if new username already exists
+            if (!newUsername.equals(currentUsername) && userRepository.existsByUsername(newUsername)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Username already exists"));
+            }
+
+            // Update username
+            user.setUsername(newUsername);
+            User updatedUser = userRepository.save(user);
+
+            return ResponseEntity.ok(Map.of(
+                "message", "Username updated successfully",
+                "userId", updatedUser.getId(),
+                "oldUsername", currentUsername,
+                "newUsername", updatedUser.getUsername()
+            ));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to update username: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Update own profile (for patients and doctors)
+     * POST /api/auth/update-profile
+     * Requires: Authentication header
+     */
+    @PostMapping("/update-profile")
+    public ResponseEntity<?> updateProfile(@RequestBody Map<String, String> request) {
+        try {
+            // Get currently authenticated user
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication == null || !authentication.isAuthenticated()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Not authenticated"));
+            }
+
+            String currentUsername = authentication.getName();
+            Optional<User> userOptional = userRepository.findByUsername(currentUsername);
+            
+            if (!userOptional.isPresent()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found"));
+            }
+
+            User user = userOptional.get();
+            String role = user.getRole();
+
+            if ("PATIENT".equals(role)) {
+                // Update patient profile
+                Optional<Patient> patientOptional = patientRepository.findByEmail(user.getEmail());
+                if (!patientOptional.isPresent()) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Patient profile not found"));
+                }
+
+                Patient patient = patientOptional.get();
+                
+                if (request.containsKey("firstName") && request.get("firstName") != null) {
+                    patient.setFirstName(request.get("firstName"));
+                }
+                if (request.containsKey("lastName") && request.get("lastName") != null) {
+                    patient.setLastName(request.get("lastName"));
+                }
+                if (request.containsKey("phoneNumber") && request.get("phoneNumber") != null) {
+                    patient.setPhoneNumber(request.get("phoneNumber"));
+                }
+                if (request.containsKey("address") && request.get("address") != null) {
+                    patient.setAddress(request.get("address"));
+                }
+                if (request.containsKey("city") && request.get("city") != null) {
+                    patient.setCity(request.get("city"));
+                }
+                if (request.containsKey("state") && request.get("state") != null) {
+                    patient.setState(request.get("state"));
+                }
+                if (request.containsKey("zipCode") && request.get("zipCode") != null) {
+                    patient.setZipCode(request.get("zipCode"));
+                }
+
+                Patient updatedPatient = patientRepository.save(patient);
+
+                return ResponseEntity.ok(Map.of(
+                    "message", "Patient profile updated successfully",
+                    "userId", user.getId(),
+                    "patientId", updatedPatient.getId(),
+                    "firstName", updatedPatient.getFirstName(),
+                    "lastName", updatedPatient.getLastName(),
+                    "phoneNumber", updatedPatient.getPhoneNumber()
+                ));
+
+            } else if ("DOCTOR".equals(role)) {
+                // Update doctor profile
+                Optional<Doctor> doctorOptional = doctorRepository.findByEmail(user.getEmail());
+                if (!doctorOptional.isPresent()) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Doctor profile not found"));
+                }
+
+                Doctor doctor = doctorOptional.get();
+                
+                if (request.containsKey("firstName") && request.get("firstName") != null) {
+                    doctor.setFirstName(request.get("firstName"));
+                }
+                if (request.containsKey("lastName") && request.get("lastName") != null) {
+                    doctor.setLastName(request.get("lastName"));
+                }
+                if (request.containsKey("phoneNumber") && request.get("phoneNumber") != null) {
+                    doctor.setPhoneNumber(request.get("phoneNumber"));
+                }
+                if (request.containsKey("specialization") && request.get("specialization") != null) {
+                    doctor.setSpecialization(request.get("specialization"));
+                }
+                if (request.containsKey("department") && request.get("department") != null) {
+                    doctor.setDepartment(request.get("department"));
+                }
+
+                Doctor updatedDoctor = doctorRepository.save(doctor);
+
+                return ResponseEntity.ok(Map.of(
+                    "message", "Doctor profile updated successfully",
+                    "userId", user.getId(),
+                    "doctorId", updatedDoctor.getId(),
+                    "firstName", updatedDoctor.getFirstName(),
+                    "lastName", updatedDoctor.getLastName(),
+                    "specialization", updatedDoctor.getSpecialization()
+                ));
+
+            } else {
+                return ResponseEntity.badRequest().body(Map.of("error", "Profile update not supported for this role"));
+            }
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to update profile: " + e.getMessage()));
         }
     }
 }
